@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<title>DiziTakip</title>
+<link rel="icon" type="image/x-icon" href="favicon.ico">
+<style>
+body {
+    background-color: #000;
+    color: #fff;
+    font-family: sans-serif;
+    margin: 0;
+    display: flex;
+    height: 100vh;
+}
+#sidebar {
+    width: 200px;
+    background: #111;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+#sidebar img {
+    width: 200px;
+    margin-bottom: 10px;
+    border-radius: 15px;
+}
+#sidebar button {
+    width: 90%;
+    padding: 10px;
+    margin: 5px 0;
+    background: #333;
+    color: #fff;
+    border: none;
+    border-radius: 20px;
+    cursor: pointer;
+}
+#sidebar button:hover {
+    background: #555;
+}
+#main {
+    flex-grow: 1;
+    padding: 20px;
+    overflow-y: auto;
+    position: relative;
+}
+.card {
+    background: #222;
+    padding: 10px;
+    margin: 10px 0;
+    border-radius: 10px;
+}
+.card button {
+    background: #444;
+    color: #fff;
+    border: none;
+    padding: 5px 10px;
+    border-radius: 15px;
+    cursor: pointer;
+    margin: 2px;
+}
+.card button:hover {
+    background: #666;
+}
+.watched-btn {
+    width: 25px;
+    height: 25px;
+    border-radius: 50%;
+    background: #000;
+    border: none;
+    cursor: pointer;
+}
+.watched-btn.watched {
+    background: orange;
+}
+#backButton {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    width: 40px;
+    height: 40px;
+    background: #555;
+    border-radius: 50%;
+    color: white;
+    font-size: 24px;
+    text-align: center;
+    line-height: 40px;
+    cursor: pointer;
+    z-index: 1000;
+}
+input, button {
+    font-size: 14px;
+}
+#search {
+    width: 100%;
+    padding: 8px;
+    margin: 10px 0;
+    font-size: 16px;
+    border-radius: 8px;
+    border: none;
+}
+</style>
+</head>
+<body>
+<div id="sidebar">
+   <div id="sidebar">
+    <img src="logo.png" alt="Logo">
+    <button onclick="showHome()">Anasayfa</button>
+    <button onclick="showAdd('dizi')">Dizi takip oluştur</button>
+    <button onclick="showAdd('film')">Film takip oluştur</button>
+    <button onclick="showList()">Listem</button>
+    <button onclick="showFavorites()">Favorilerim</button>
+    <button onclick="showAbout()">Hazırlayan</button>
+    <button onclick="showSettings()">Ayarlar</button>
+</div>
+
+</div>
+<div id="main"></div>
+<div id="backButton" onclick="goBack()" style="display:none;">↩️</div>
+
+<script>
+let historyStack = [];
+let items = JSON.parse(localStorage.getItem('items')) || [];
+let favorites = JSON.parse(localStorage.getItem('favorites')) || [];
+
+function saveItems() { localStorage.setItem('items', JSON.stringify(items)); }
+function saveFavorites() { localStorage.setItem('favorites', JSON.stringify(favorites)); }
+
+function goBack() {
+    if (historyStack.length > 0) {
+        const prev = historyStack.pop();
+        document.getElementById('main').innerHTML = prev;
+    }
+    document.getElementById('backButton').style.display = historyStack.length > 0 ? "block" : "none";
+}
+
+function pushHistory() {
+    historyStack.push(document.getElementById('main').innerHTML);
+    document.getElementById('backButton').style.display = "block";
+}
+
+function showHome() {
+    pushHistory();
+    let totalWatched = 0;
+    let lastWatched = "Yok";
+    items.forEach(item => {
+        if (item.episodes) {
+            item.episodes.forEach(ep => {
+                if (ep.watched) {
+                    totalWatched++;
+                    lastWatched = `${item.name} - ${ep.number}. Bölüm`;
+                }
+            });
+        }
+    });
+    document.getElementById('main').innerHTML = `
+    <h2>Anasayfa</h2>
+    <p>Toplam İzlenen Bölüm Sayısı: <strong>${totalWatched}</strong></p>
+    <p>En Son İzlenen: <strong>${lastWatched}</strong></p>
+    `;
+}
+
+function showAdd(type) {
+    pushHistory();
+    let html = `<h2>${type === 'dizi' ? 'Dizi Takip Oluştur' : 'Film Takip Oluştur'}</h2>
+    <input type="text" id="name" placeholder="${type === 'dizi' ? 'Dizi adı' : 'Film adı'}"><br>`;
+    if (type === 'dizi') {
+        html += `<input type="number" id="count" placeholder="Bölüm sayısı"><br>`;
+    }
+    html += `<button onclick="addItem('${type}')">Kaydet</button>`;
+    document.getElementById('main').innerHTML = html;
+}
+
+function addItem(type) {
+    const name = document.getElementById('name').value.trim();
+    if (!name) return alert("Ad boş olamaz.");
+    let count = 1;
+    if (type === 'dizi') {
+        count = parseInt(document.getElementById('count').value);
+        if (!count || count < 1) return alert("Bölüm sayısı gir.");
+    }
+    const id = Date.now();
+    let episodes = [];
+    if (type === 'dizi') {
+        for (let i = 1; i <= count; i++) {
+            episodes.push({ number: i, watched: false, note: '' });
+        }
+    } else {
+        episodes.push({ number: 1, watched: false, note: '' }); // film için tek bölüm
+    }
+    items.push({ id, type, name, episodes });
+    saveItems();
+    alert(`${type === 'dizi' ? 'Dizi' : 'Film'} eklendi!`);
+    showList(type);
+}
+
+function showList(type='dizi') {
+    pushHistory();
+    const main = document.getElementById('main');
+    main.innerHTML = `
+    <input type="text" id="search" placeholder="Ara..." oninput="filterList('${type}')">
+    <button onclick="renderList('dizi')">Diziler</button>
+    <button onclick="renderList('film')">Filmler</button>
+    <div id="list"></div>`;
+    renderList(type);
+}
+
+function filterList(type) {
+    const keyword = document.getElementById('search').value.toLowerCase();
+    const filteredItems = items.filter(item => item.type === type && item.name.toLowerCase().includes(keyword));
+    renderList(type, filteredItems);
+}
+
+function renderList(type, filtered = null) {
+    const list = document.getElementById('list');
+    list.innerHTML = '';
+    const showItems = filtered || items.filter(item => item.type === type);
+    showItems.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'card';
+        div.innerHTML = `<h3 style="color:white;">${item.name}</h3>
+        ${item.type === 'dizi' || item.type === 'film' ? `<button onclick="openEpisodes(${item.id})">Bölümleri Gör</button>` : ''}
+        <button onclick="toggleFavorite(${item.id})">${favorites.includes(item.id) ? 'Favoriden Çıkar' : 'Favoriye Ekle'}</button>
+        <button onclick="deleteItem(${item.id}, '${type}')">Sil</button>`;
+        list.appendChild(div);
+    });
+}
+
+function openEpisodes(id) {
+    pushHistory();
+    const item = items.find(it => it.id === id);
+    const main = document.getElementById('main');
+    main.innerHTML = `<h2>${item.name} - Bölümler</h2>`;
+    item.episodes.forEach(ep => {
+        const div = document.createElement('div');
+        div.className = 'card';
+        div.innerHTML = `<h4>${ep.number}. Bölüm</h4>
+        <button class="watched-btn ${ep.watched ? 'watched' : ''}" onclick="toggleWatched(${id}, ${ep.number})"></button>
+        <button onclick="addNote(${id}, ${ep.number})">Kaldığın yeri yaz</button>
+        <p>${ep.note ? 'Kaldığın Yer: ' + ep.note : ''}</p>`;
+        main.appendChild(div);
+    });
+}
+
+function toggleWatched(id, epNumber) {
+    const item = items.find(it => it.id === id);
+    const ep = item.episodes.find(e => e.number === epNumber);
+    ep.watched = !ep.watched;
+    saveItems();
+    openEpisodes(id);
+}
+
+function addNote(id, epNumber) {
+    const note = prompt("Kaldığın yeri yaz:");
+    if (note !== null) {
+        const item = items.find(it => it.id === id);
+        const ep = item.episodes.find(e => e.number === epNumber);
+        ep.note = note;
+        saveItems();
+        openEpisodes(id);
+    }
+}
+
+function toggleFavorite(id) {
+    if (favorites.includes(id)) {
+        favorites = favorites.filter(f => f !== id);
+    } else {
+        favorites.push(id);
+    }
+    saveFavorites();
+    const item = items.find(it => it.id === id);
+    showList(item.type);
+}
+
+function deleteItem(id, type) {
+    if (confirm("Bu diziyi/filmi silmek istediğine emin misin?")) {
+        items = items.filter(it => String(it.id) !== String(id));
+        favorites = favorites.filter(f => String(f) !== String(id));
+        saveItems();
+        saveFavorites();
+        renderList(type);
+    }
+}
+
+function showFavorites() {
+    pushHistory();
+    const main = document.getElementById('main');
+    main.innerHTML = `
+    <h2>Favorilerim</h2>
+    <button onclick="renderFavorites('dizi')">Diziler</button>
+    <button onclick="renderFavorites('film')">Filmler</button>
+    <div id="favoritesList"></div>`;
+    renderFavorites('dizi');
+}
+
+function renderFavorites(type) {
+    const list = document.getElementById('favoritesList');
+    list.innerHTML = '';
+    favorites.forEach(id => {
+        const item = items.find(it => it.id === id && it.type === type);
+        if (item) {
+            const div = document.createElement('div');
+            div.className = 'card';
+            div.innerHTML = `<h3>${item.name}</h3>
+            ${item.type === 'dizi' || item.type === 'film' ? `<button onclick="openEpisodes(${item.id})">Bölümleri Gör</button>` : ''}
+            <button onclick="toggleFavorite(${item.id})">Favoriden Çıkar</button>`;
+            list.appendChild(div);
+        }
+    });
+}
+
+function showAbout() {
+    pushHistory();
+    document.getElementById('main').innerHTML = "<h2>Hazırlayan:</h2><p>halil</p>";
+}
+
+function showSettings() {
+    pushHistory();
+    document.getElementById('main').innerHTML = `
+    <h2>Ayarlar</h2>
+    <button onclick="toggleTheme()">Tema Değiştir (Koyu/Açık)</button>
+    <button onclick="clearData('dizi')">Tüm Dizileri Sil</button>
+    <button onclick="clearData('film')">Tüm Filmleri Sil</button>
+    <button onclick="clearFavorites()">Tüm Favorileri Sil</button>`;
+}
+
+function toggleTheme() {
+    let body = document.body;
+    if (body.style.backgroundColor === 'white') {
+        body.style.backgroundColor = '#000';
+        body.style.color = '#fff';
+    } else {
+        body.style.backgroundColor = 'white';
+        body.style.color = 'black';
+    }
+}
+
+function clearData(type) {
+    if (confirm(`Tüm ${type}leri silmek istediğine emin misin? Bu işlem geri alınamaz.`)) {
+        items = items.filter(it => it.type !== type);
+        favorites = favorites.filter(f => {
+            const item = items.find(itm => itm.id === f);
+            return item && item.type !== type;
+        });
+        saveItems();
+        saveFavorites();
+        alert(`Tüm ${type}ler silindi.`);
+        showSettings();
+    }
+}
+
+function clearFavorites() {
+    if (confirm("Tüm favorileri silmek istiyor musun?")) {
+        favorites = [];
+        saveFavorites();
+        alert("Tüm favoriler silindi.");
+        showSettings();
+    }
+}
+
+showHome();
+</script>
+</body>
+</html>
