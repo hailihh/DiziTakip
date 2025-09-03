@@ -146,7 +146,16 @@ function showHome() {
     let totalWatched = 0;
     let lastWatched = "Yok";
     items.forEach(item => {
-        if (item.episodes) {
+        if (item.type === "dizi" && item.seasons) {
+            item.seasons.forEach(season => {
+                season.episodes.forEach(ep => {
+                    if (ep.watched) {
+                        totalWatched++;
+                        lastWatched = `${item.name} - ${season.seasonNumber}. Sezon - ${ep.number}. Bölüm`;
+                    }
+                });
+            });
+        } else if (item.episodes) {
             item.episodes.forEach(ep => {
                 if (ep.watched) {
                     totalWatched++;
@@ -167,30 +176,53 @@ function showAdd(type) {
     let html = `<h2>${type === 'dizi' ? 'Dizi Takip Oluştur' : 'Film Takip Oluştur'}</h2>
     <input type="text" id="name" placeholder="${type === 'dizi' ? 'Dizi adı' : 'Film adı'}"><br>`;
     if (type === 'dizi') {
-        html += `<input type="number" id="count" placeholder="Bölüm sayısı"><br>`;
+        html += `<input type="number" id="seasonCount" min="1" placeholder="Sezon sayısı" style="width:90px;"> 
+        <button onclick="renderSeasonInputs()">Sezon Bölüm Ekle</button>
+        <div id="seasonInputs"></div>
+        `;
+    } else {
+        html += `<br>`;
     }
     html += `<button onclick="addItem('${type}')">Kaydet</button>`;
     document.getElementById('main').innerHTML = html;
 }
 
+function renderSeasonInputs() {
+    const seasonCount = parseInt(document.getElementById('seasonCount').value);
+    let html = '';
+    if (!seasonCount || seasonCount < 1) {
+        document.getElementById('seasonInputs').innerHTML = '';
+        return;
+    }
+    for (let i = 1; i <= seasonCount; i++) {
+        html += `<div> ${i}. Sezon: <input type="number" min="1" id="seasonEp_${i}" placeholder="Bölüm sayısı" style="width:90px;"> </div>`;
+    }
+    document.getElementById('seasonInputs').innerHTML = html;
+}
+
 function addItem(type) {
     const name = document.getElementById('name').value.trim();
     if (!name) return alert("Ad boş olamaz.");
-    let count = 1;
+    let id = Date.now();
     if (type === 'dizi') {
-        count = parseInt(document.getElementById('count').value);
-        if (!count || count < 1) return alert("Bölüm sayısı gir.");
-    }
-    const id = Date.now();
-    let episodes = [];
-    if (type === 'dizi') {
-        for (let i = 1; i <= count; i++) {
-            episodes.push({ number: i, watched: false, note: '' });
+        const seasonCount = parseInt(document.getElementById('seasonCount').value);
+        if (!seasonCount || seasonCount < 1) return alert("Sezon sayısı gir.");
+        let seasons = [];
+        for (let i = 1; i <= seasonCount; i++) {
+            let epCount = parseInt(document.getElementById(`seasonEp_${i}`).value);
+            if (!epCount || epCount < 1) return alert(`${i}. sezon için bölüm sayısı gir.`);
+            let episodes = [];
+            for (let j = 1; j <= epCount; j++) {
+                episodes.push({ number: j, watched: false, note: '' });
+            }
+            seasons.push({ seasonNumber: i, episodes });
         }
+        items.push({ id, type, name, seasons });
     } else {
-        episodes.push({ number: 1, watched: false, note: '' }); // film için tek bölüm
+        // Film için eski sistem
+        let episodes = [{ number: 1, watched: false, note: '' }];
+        items.push({ id, type, name, episodes });
     }
-    items.push({ id, type, name, episodes });
     saveItems();
     alert(`${type === 'dizi' ? 'Dizi' : 'Film'} eklendi!`);
     showList(type);
@@ -221,45 +253,96 @@ function renderList(type, filtered = null) {
         const div = document.createElement('div');
         div.className = 'card';
         div.innerHTML = `<h3 style="color:white;">${item.name}</h3>
-        ${item.type === 'dizi' || item.type === 'film' ? `<button onclick="openEpisodes(${item.id})">Bölümleri Gör</button>` : ''}
+        ${
+            item.type === 'dizi' && item.seasons
+            ? `<button onclick="openSeasons(${item.id})">Sezonları Gör</button>`
+            : (item.type === 'dizi' || item.type === 'film'
+                ? `<button onclick="openEpisodes(${item.id})">Bölümleri Gör</button>`
+                : '')
+        }
         <button onclick="toggleFavorite(${item.id})">${favorites.includes(item.id) ? 'Favoriden Çıkar' : 'Favoriye Ekle'}</button>
         <button onclick="deleteItem(${item.id}, '${type}')">Sil</button>`;
         list.appendChild(div);
     });
 }
 
-function openEpisodes(id) {
+function openSeasons(id) {
     pushHistory();
     const item = items.find(it => it.id === id);
     const main = document.getElementById('main');
-    main.innerHTML = `<h2>${item.name} - Bölümler</h2>`;
-    item.episodes.forEach(ep => {
+    main.innerHTML = `<h2>${item.name} - Sezonlar</h2>`;
+    item.seasons.forEach(season => {
         const div = document.createElement('div');
         div.className = 'card';
-        div.innerHTML = `<h4>${ep.number}. Bölüm</h4>
-        <button class="watched-btn ${ep.watched ? 'watched' : ''}" onclick="toggleWatched(${id}, ${ep.number})"></button>
-        <button onclick="addNote(${id}, ${ep.number})">Kaldığın yeri yaz</button>
-        <p>${ep.note ? 'Kaldığın Yer: ' + ep.note : ''}</p>`;
+        div.innerHTML = `<h4>${season.seasonNumber}. Sezon</h4>
+            <button onclick="openEpisodes(${id}, ${season.seasonNumber})">Bölümleri Gör</button>`;
         main.appendChild(div);
     });
 }
 
-function toggleWatched(id, epNumber) {
+function openEpisodes(id, seasonNumber = null) {
+    pushHistory();
     const item = items.find(it => it.id === id);
-    const ep = item.episodes.find(e => e.number === epNumber);
-    ep.watched = !ep.watched;
-    saveItems();
-    openEpisodes(id);
+    const main = document.getElementById('main');
+    if (item.type === "dizi" && item.seasons) {
+        if (seasonNumber === null) {
+            // Hiçbir sezon seçilmediyse, sezonları göster
+            openSeasons(id);
+            return;
+        }
+        const season = item.seasons.find(s => s.seasonNumber === seasonNumber);
+        main.innerHTML = `<h2>${item.name} - ${season.seasonNumber}. Sezon Bölümleri</h2>`;
+        season.episodes.forEach(ep => {
+            const div = document.createElement('div');
+            div.className = 'card';
+            div.innerHTML = `<h4>${ep.number}. Bölüm</h4>
+            <button class="watched-btn ${ep.watched ? 'watched' : ''}" onclick="toggleWatched(${id}, ${seasonNumber}, ${ep.number})"></button>
+            <button onclick="addNote(${id}, ${seasonNumber}, ${ep.number})">Kaldığın yeri yaz</button>
+            <p>${ep.note ? 'Kaldığın Yer: ' + ep.note : ''}</p>`;
+            main.appendChild(div);
+        });
+    } else if (item.episodes) {
+        main.innerHTML = `<h2>${item.name} - Bölümler</h2>`;
+        item.episodes.forEach(ep => {
+            const div = document.createElement('div');
+            div.className = 'card';
+            div.innerHTML = `<h4>${ep.number}. Bölüm</h4>
+            <button class="watched-btn ${ep.watched ? 'watched' : ''}" onclick="toggleWatched(${id}, null, ${ep.number})"></button>
+            <button onclick="addNote(${id}, null, ${ep.number})">Kaldığın yeri yaz</button>
+            <p>${ep.note ? 'Kaldığın Yer: ' + ep.note : ''}</p>`;
+            main.appendChild(div);
+        });
+    }
 }
 
-function addNote(id, epNumber) {
+function toggleWatched(id, seasonNumber = null, epNumber) {
+    const item = items.find(it => it.id === id);
+    if (item.type === "dizi" && item.seasons && seasonNumber) {
+        const season = item.seasons.find(s => s.seasonNumber === seasonNumber);
+        const ep = season.episodes.find(e => e.number === epNumber);
+        ep.watched = !ep.watched;
+    } else if (item.episodes) {
+        const ep = item.episodes.find(e => e.number === epNumber);
+        ep.watched = !ep.watched;
+    }
+    saveItems();
+    openEpisodes(id, seasonNumber);
+}
+
+function addNote(id, seasonNumber = null, epNumber) {
     const note = prompt("Kaldığın yeri yaz:");
     if (note !== null) {
         const item = items.find(it => it.id === id);
-        const ep = item.episodes.find(e => e.number === epNumber);
-        ep.note = note;
+        if (item.type === "dizi" && item.seasons && seasonNumber) {
+            const season = item.seasons.find(s => s.seasonNumber === seasonNumber);
+            const ep = season.episodes.find(e => e.number === epNumber);
+            ep.note = note;
+        } else if (item.episodes) {
+            const ep = item.episodes.find(e => e.number === epNumber);
+            ep.note = note;
+        }
         saveItems();
-        openEpisodes(id);
+        openEpisodes(id, seasonNumber);
     }
 }
 
@@ -304,7 +387,13 @@ function renderFavorites(type) {
             const div = document.createElement('div');
             div.className = 'card';
             div.innerHTML = `<h3>${item.name}</h3>
-            ${item.type === 'dizi' || item.type === 'film' ? `<button onclick="openEpisodes(${item.id})">Bölümleri Gör</button>` : ''}
+            ${
+                item.type === 'dizi' && item.seasons
+                ? `<button onclick="openSeasons(${item.id})">Sezonları Gör</button>`
+                : (item.type === 'dizi' || item.type === 'film'
+                    ? `<button onclick="openEpisodes(${item.id})">Bölümleri Gör</button>`
+                    : '')
+            }
             <button onclick="toggleFavorite(${item.id})">Favoriden Çıkar</button>`;
             list.appendChild(div);
         }
